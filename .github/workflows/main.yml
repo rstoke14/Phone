@@ -1,0 +1,26 @@
+name: Android Cloud Phone
+
+on: [workflow_dispatch]
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6 hours max
+
+    steps:
+      - name: Install Android emulator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-kvm libvirt-daemon-system bridge-utils
+          wget https://github.com/google/android-emulator-container-scripts/archive/refs/heads/main.zip
+          unzip main.zip
+          cd android-emulator-container-scripts-main
+          ./build.sh
+          
+      - name: Start Android emulator
+        run: |
+          ./run.sh --no-window --vnc --adb
+          
+      - name: Keep alive
+        run: |
+          while true; do sleep 60; done
