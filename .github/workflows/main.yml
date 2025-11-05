@@ -1,26 +1,71 @@
-name: Android Cloud Phone
+name: Android Cloud Phone (Touch Browser)
 
-on: [workflow_dispatch]
+on:
+  workflow_dispatch:
 
 jobs:
   android:
     runs-on: ubuntu-latest
-    timeout-minutes: 360  # 6 hours max
+    timeout-minutes: 360  # Max 6 hours
+
+    env:
+      NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }} # Set your ngrok token in repo secrets
 
     steps:
-      - name: Install Android emulator
+      # 1️⃣ Checkout
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      # 2️⃣ Install dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y qemu-kvm libvirt-daemon-system bridge-utils
+          sudo apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils \
+                                  unzip wget curl openjdk-17-jdk python3-pip novnc socat
+
+      # 3️⃣ Download Android Emulator Container Scripts
+      - name: Download emulator scripts
+        run: |
           wget https://github.com/google/android-emulator-container-scripts/archive/refs/heads/main.zip
           unzip main.zip
           cd android-emulator-container-scripts-main
-          ./build.sh
-          
-      - name: Start Android emulator
+          chmod +x build.sh run.sh
+
+      # 4️⃣ Build Android Emulator
+      - name: Build Android emulator
         run: |
-          ./run.sh --no-window --vnc --adb
-          
+          cd android-emulator-container-scripts-main
+          ./build.sh
+
+      # 5️⃣ Start emulator with VNC
+      - name: Run Android emulator
+        run: |
+          cd android-emulator-container-scripts-main
+          # --no-window runs headless, --vnc enables VNC server, --adb enables adb
+          ./run.sh --no-window --vnc --adb &
+          sleep 10  # Give it time to start
+
+      # 6️⃣ Install ngrok
+      - name: Install ngrok
+        run: |
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com/ jammy main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt update && sudo apt install -y ngrok
+
+      # 7️⃣ Start ngrok to expose VNC
+      - name: Start ngrok TCP tunnel
+        run: |
+          ngrok authtoken $NGROK_AUTHTOKEN
+          # Emulator VNC default port is 5901
+          ngrok tcp 5901 --region=in &
+          sleep 10
+
+      # 8️⃣ Print ngrok URL
+      - name: Show ngrok URL
+        run: |
+          curl --silent http://localhost:4040/api/tunnels | python3 -c "import sys, json; print(json.load(sys.stdin)['tunnels'][0]['public_url'])"
+
+      # 9️⃣ Keep workflow alive for 6 hours
       - name: Keep alive
         run: |
           while true; do sleep 60; done
